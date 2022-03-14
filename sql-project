@@ -1,0 +1,205 @@
+--------------------- SQL Project	----------------------------
+--------------------- By Abed Wazwaz ---------------------------
+
+use adventureworks2014;
+go
+-- Exercise 1:
+--הצג את שמות כל העובדים )טבלת [Person].[Person] ( שהחליפו
+--מחלקה )טבלת [HumanResources].[EmployeeDepartmentHistory] )
+select CONCAT(firstname,' ',LastName)as EmployeeName, count(*) as #TimesDepartmentsChanged
+from [Person].[Person]
+inner join [HumanResources].[EmployeeDepartmentHistory]
+on [Person].[Person].[BusinessEntityID] = [HumanResources].[EmployeeDepartmentHistory].BusinessEntityID
+group by [Person].[Person].FirstName, LastName
+having count(*) > 1
+
+go
+-- Exercise 2:
+--הצגת את שמות כל העובדים שהחליפו מחלקה ואת שם המחלקה
+--האחרונה בה הם עובדים
+with cte as (
+select [HumanResources].[Employee].[BusinessEntityID], [HumanResources].[Employee].NationalIDNumber, count(*) as HowManyTimesDepartmentsChanged
+from [HumanResources].[Employee]
+inner join [HumanResources].[EmployeeDepartmentHistory]
+on [HumanResources].[Employee].[BusinessEntityID] = [HumanResources].[EmployeeDepartmentHistory].BusinessEntityID
+group by [HumanResources].[Employee].[BusinessEntityID], [HumanResources].[Employee].NationalIDNumber
+having count(*) > 1 
+)
+select CONCAT(firstname,' ',LastName)as EmployeeName, name as CurrentDepartment
+from cte 
+left join [Person].[Person] on [Person].[Person].BusinessEntityID = cte.BusinessEntityID inner join [HumanResources].[EmployeeDepartmentHistory]
+on cte.BusinessEntityID = EmployeeDepartmentHistory.BusinessEntityID 
+inner join HumanResources.Department on EmployeeDepartmentHistory.DepartmentID = Department.DepartmentID
+where EndDate is NULL
+
+go
+-- Exercise 3:
+-- הצג את שם המוצר עם כמות ההזמנות הגבוה ביותר
+select Production.Product.ProductID, sum(OrderQty*UnitPrice) as Totalsale, [Production].[Product].Name
+FRom [Production].[Product] inner join [Purchasing].[PurchaseOrderDetail] on [Production].[Product].ProductID = [Purchasing].[PurchaseOrderDetail].ProductID
+group by product.ProductID,name
+order by Totalsale DESC
+
+
+go
+-- Exercise 4:
+--הצג את שם המוצר שנמכר בכמות הגבוה ביותר 
+select Production.Product.ProductID, sum(PurchaseOrderDetail.OrderQty) as OrderAmount, [Production].[Product].Name
+FRom [Production].[Product] inner join [Purchasing].[PurchaseOrderDetail] on [Production].[Product].ProductID = [Purchasing].[PurchaseOrderDetail].ProductID
+group by product.ProductID,name
+order by OrderAmount DESC
+
+
+go
+-- Exercise 5:
+-- הצג את פרטי הלקוחות ללא הזמנות
+
+select customer.CustomerID, Customer.StoreID, Customer.AccountNumber
+from Sales.Customer
+left join Sales.SalesOrderHeader on Customer.CustomerID = SalesOrderHeader.CustomerID
+where SalesOrderHeader.SalesOrderID is NULL
+
+go
+-- Exercise 6:
+-- הצג את פרטי המוצרים ללא הזמנות 
+select product.ProductID, Product.Name, product.productnumber
+from Production.Product
+left join Sales.SalesOrderDetail on Product.ProductID = SalesOrderDetail.ProductID
+where SalesOrderDetail.SalesOrderID is null
+
+go
+-- Exercise 7:
+-- הצג את 3 ההזמנות עם הסה"כ ערך הגבוה יותר בכל חודש
+select Top (3) sum(orderqty*unitprice) as totalsales, YEAR(orderdate) as SalesYear,
+         MONTH(orderdate) as SalesMonth
+from sales.SalesOrderheader
+inner join Sales.SalesOrderDetail on SalesOrderDetail.SalesOrderID = SalesOrderHeader.SalesOrderID
+group by year(OrderDate),month(OrderDate)
+order by totalsales desc
+
+go
+-- Exercise 8:
+-- הצג את רשימת אנשי המכירות לפי סה"כ ההזמנות שבוצעו על ידיהם
+-- בסדר יורד בחלוקה לחודש ושנה
+select salespersonID, year(orderdate) as orderyear, month(orderdate) as ordermonth, sum(orderqty*unitprice) as totalsales
+from Sales.SalesOrderHeader
+inner join Sales.SalesPerson on SalesOrderHeader.SalesPersonID = SalesPerson.BusinessEntityID
+inner join Sales.SalesOrderDetail on SalesOrderHeader.SalesOrderID = SalesOrderDetail.SalesOrderID
+group by year(orderdate), month(orderdate), SalesPersonID
+order by totalsales desc
+
+go
+-- Exercise 9: 
+-- הצג את סה"כ המכירות לפי איש מכירו ת (כולל שם פרטי ושם משפחה  
+
+with newcte as 
+(
+select salespersonID, year(orderdate) as orderyear, month(orderdate) as ordermonth, sum(orderqty*unitprice) as totalsales
+from Sales.SalesOrderHeader
+inner join Sales.SalesPerson on SalesOrderHeader.SalesPersonID = SalesPerson.BusinessEntityID
+inner join Sales.SalesOrderDetail on SalesOrderHeader.SalesOrderID = SalesOrderDetail.SalesOrderID
+group by year(orderdate), month(orderdate), SalesPersonID
+)
+select salespersonID, FirstName, LastName, ordermonth, orderyear, totalsales
+from Person.Person 
+inner join newcte on Person.BusinessEntityID = newcte.SalesPersonID
+order by orderyear,ordermonth
+
+
+
+
+go
+-- Exercise 10:
+--בהמשך לשאילתה הקודמת הוסף לתוצאה עמודה נוספת כך שבכל
+--רשומה נראה גם את המכירות של החודש הקודם
+ 
+with newcte as 
+(
+select salespersonID, year(orderdate) as orderyear, month(orderdate) as ordermonth, sum(orderqty*unitprice) as totalsales
+from Sales.SalesOrderHeader
+inner join Sales.SalesPerson on SalesOrderHeader.SalesPersonID = SalesPerson.BusinessEntityID
+inner join Sales.SalesOrderDetail on SalesOrderHeader.SalesOrderID = SalesOrderDetail.SalesOrderID
+group by year(orderdate), month(orderdate), SalesPersonID
+), newcte2 as 
+(
+select ROW_NUMBER() over(order by orderyear,ordermonth) as row,salespersonID, FirstName, LastName, ordermonth, orderyear,
+cast(concat(orderyear,'-',ordermonth,'-01') as date) as ord,totalsales
+from Person.Person 
+inner join newcte on Person.BusinessEntityID = newcte.SalesPersonID
+),cte3 as
+(
+select *,DATEADD(month,-1,ord) as prev
+from newcte2
+) 
+
+select cte3.salespersonid,cte3.FirstName,cte3.LastName,cte3.ordermonth,cte3.orderyear,cte3.totalsales,newcte2.totalsales as lastmonth
+from cte3
+left join newcte2 on cte3.SalesPersonID = cte3.SalesPersonID and cte3.prev = newcte2.ord 
+and newcte2.FirstName = cte3.FirstName
+
+
+-- Exercise 11:
+
+go
+
+CREATE VIEW salesperson as 
+with newcte as 
+(
+select salespersonID, year(orderdate) as orderyear, month(orderdate) as ordermonth, sum(orderqty*unitprice) as totalsales
+from Sales.SalesOrderHeader
+inner join Sales.SalesPerson on SalesOrderHeader.SalesPersonID = SalesPerson.BusinessEntityID
+inner join Sales.SalesOrderDetail on SalesOrderHeader.SalesOrderID = SalesOrderDetail.SalesOrderID
+group by year(orderdate), month(orderdate), SalesPersonID
+), newcte2 as 
+(
+select ROW_NUMBER() over(order by orderyear,ordermonth) as row,salespersonID, FirstName, LastName, ordermonth, orderyear,
+cast(concat(orderyear,'-',ordermonth,'-01') as date) as ord,totalsales
+from Person.Person 
+inner join newcte on Person.BusinessEntityID = newcte.SalesPersonID
+),cte3 as
+(
+select *,DATEADD(month,-1,ord) as prev
+from newcte2
+) 
+
+select cte3.salespersonid,cte3.FirstName,cte3.LastName,cte3.ordermonth,cte3.orderyear,cte3.totalsales,newcte2.totalsales as lastmonth
+from cte3
+left join newcte2 on cte3.SalesPersonID = cte3.SalesPersonID and cte3.prev = newcte2.ord 
+and newcte2.FirstName = cte3.FirstName
+-- Example of a working call to the procedure with a valid Sales Person ID:
+                                                           -- drop view salesperson
+
+----------------------------------------------------------------------------------------------------------
+
+CREATE PROCEDURE Selectsalesperson1 @personID int
+AS
+SELECT * FROM [dbo].[salesperson] WHERE salespersonid = @personID
+
+exec Selectsalesperson1 @personID = 282
+
+ -- drop procedure Selectsalesperson1
+
+go
+
+-- Example of a working call to the procedure with no Sales Person ID:
+CREATE PROCEDURE SelectAllsalesPersons
+AS
+select * from [dbo].[salesperson]
+go
+exec SelectAllsalesPersons
+
+-- Example of a failed call to the function using invalid input:
+
+go
+DECLARE @ErrMsg VARCHAR(127) = 'Error you have not entered correct SalesPersonID '
+begin try
+if @@rowcount <= 0
+    raiserror (@ErrMsg,1,10)
+end try
+begin catch 
+
+--change SalespersonID here
+exec Selectsalesperson @personID = I28
+
+end catch
+
